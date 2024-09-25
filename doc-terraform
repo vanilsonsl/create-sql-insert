@@ -1,0 +1,120 @@
+Para fazer algo similar no Terraform, você precisará utilizar blocos de dados iterativos como `for_each` ou `count` para gerar múltiplos recursos dinamicamente. Como Terraform é voltado para a provisão de infraestrutura, você teria que adaptar a lógica para algo que ele consiga manipular diretamente, como arquivos de configuração ou outros recursos. No entanto, Terraform não é projetado diretamente para gerar código SQL.
+
+Para simular a geração de múltiplas entradas SQL no Terraform, você pode usar a função `templatefile` para preencher um template com os dados variáveis, e então armazenar ou aplicar o conteúdo gerado. Aqui está uma maneira básica de gerar as entradas dinamicamente:
+
+### Passos para gerar SQL no Terraform:
+
+1. **Criar um arquivo template SQL (`insert_tournaments.sql.tpl`)**: Esse arquivo conterá a estrutura SQL e placeholders que serão substituídos pelos dados que você gerar no Terraform.
+
+```sql
+INSERT INTO `netcarta_netcartas`.`nc_tournaments`
+(`TO_ID`,
+`GA_ID`,
+`TO_NAME`,
+`COMMENTS`,
+`TO_STATUS`,
+`TO_PASSWORD`,
+`TO_TYPE`,
+`TO_AUDIO`,
+`TO_VIDEO`,
+`TO_MAX_PLAYERS`,
+`TO_NUMBER_OF_PLAYERS`,
+`TO_ALLOW_SPECTATORS`,
+`TO_ISPERSISTENT`,
+`TO_APPNAME`,
+`TO_MAXPLAYERS_IN_TOURNAMENT`,
+`TO_GIFT_ID`,
+`TO_GIFT_DESCRIPTION`,
+`TO_TOURNAMENT_STATUS`,
+`TO_TOURNAMENT_WINNER`,
+`TO_TOURNAMENT_START_DATE_TIME`,
+`TO_TOURNAMENT_REGISTERED`,
+`TO_MUSIC`,
+`TO_SERVER`,
+`TO_TITLE_DESC`,
+`TO_WINNER1_ID`,
+`TO_WINNER2_ID`,
+`MIN_ONLINE_PLAYERS_AUTO_START_BEFORE_TIME`,
+`NUMBER_OF_TOURNAMENTS_TO_CREATE`,
+`DIFF_IN_HOURS_CREATE_TOURNAMENTS`)
+VALUES
+(<TO_ID>, <GA_ID>, '<TO_NAME>', '<COMMENTS>', 'active', '', '<TO_TYPE>', 0, 0, 2, 0, 1, 0, '<TO_APPNAME>', 100, 8, 'Troféu Virtual', 'Inscrições Abertas', '', '<TO_TOURNAMENT_START_DATE_TIME>', 0, 0, '', '<TO_TITLE_DESC>', 0, 0, 0, 1, 1);
+```
+
+2. **Escrever o código Terraform**:
+
+No arquivo Terraform, você pode criar um bloco que usa o `templatefile` para preencher os dados no template com base em parâmetros fornecidos.
+
+```hcl
+variable "tournaments" {
+  type = list(object({
+    ga_id   = number
+    to_id   = number
+    to_name = string
+    to_type = string
+    to_appname = string
+    to_title_desc = string
+    to_start_time = string
+  }))
+}
+
+# Definindo os valores iniciais
+locals {
+  tournaments_data = [
+    for n in range(0, 16) : {
+      ga_id         = n < 8 ? 200 : 201 # Primeiros 8 para Buraco, o restante para Tranca
+      to_id         = 54435 + n
+      to_name       = format("LobbyTorneio-%s%d", n < 8 ? "Buraco" : "Tranca", 2676 + n)
+      to_type       = n < 8 ? "B" : "T"
+      to_appname    = format("LobbyTorneio-%s%d", n < 8 ? "Buraco" : "Tranca", 2676 + n)
+      to_title_desc = n < 8 ? "Torneio de Buraco Individual" : "Torneio de Tranca Individual"
+      to_start_time = format("2024-09-%02d %02d:00:00", 27 + floor(n / 8), 11 + (n % 7) * 2)
+    }
+  ]
+}
+
+# Gerando o conteúdo SQL
+resource "local_file" "tournaments_sql" {
+  filename = "${path.module}/generated_tournaments.sql"
+
+  content = join("\n", [
+    for tournament in local.tournaments_data : templatefile("${path.module}/insert_tournaments.sql.tpl", {
+      TO_ID                       = tournament.to_id
+      GA_ID                       = tournament.ga_id
+      TO_NAME                     = tournament.to_name
+      COMMENTS                    = "TO_NAME não pode conter hipen no nome como antigamente, consultar Luiz"
+      TO_TYPE                     = tournament.to_type
+      TO_APPNAME                  = tournament.to_appname
+      TO_TOURNAMENT_START_DATE_TIME = tournament.to_start_time
+      TO_TITLE_DESC               = tournament.to_title_desc
+    })
+  ])
+}
+```
+
+### Explicação:
+
+1. **Variáveis e Locais**:
+   - `variable "tournaments"`: Define uma lista de objetos contendo os valores para cada torneio.
+   - `locals.tournaments_data`: Um loop que gera os dados dos torneios dinamicamente usando `range` e funções como `format` para construir os nomes e IDs de acordo com sua necessidade.
+   
+2. **Uso de `templatefile`**:
+   - A função `templatefile` carrega o arquivo de template SQL (`insert_tournaments.sql.tpl`) e preenche os placeholders (`<TO_ID>`, `<GA_ID>`, etc.) com os valores gerados no `locals`.
+   
+3. **Arquivo gerado**:
+   - O recurso `local_file` gera um arquivo chamado `generated_tournaments.sql` contendo o SQL final com todos os valores preenchidos.
+
+### Passos para rodar:
+1. Crie um arquivo Terraform (`main.tf`).
+2. Crie o arquivo template (`insert_tournaments.sql.tpl`) com o conteúdo SQL contendo os placeholders.
+3. Execute o Terraform:
+
+```bash
+terraform init
+terraform apply
+```
+
+Isso vai gerar um arquivo `generated_tournaments.sql` com o conteúdo SQL conforme solicitado.
+
+### Observação:
+O Terraform não é projetado especificamente para esse tipo de automação, então para um caso como este (geração de SQL), linguagens como Python ou Bash podem ser uma escolha mais direta, mas é possível fazer com o Terraform para integrar com infraestrutura ou automação de provisionamento.
