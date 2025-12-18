@@ -1,0 +1,66 @@
+provider "null" {}
+
+resource "null_resource" "insert_tournaments" {
+  provisioner "local-exec" {
+    command = <<EOT
+      #!/bin/bash
+
+      # Configurações do banco de dados
+      DB_HOST="seu_host"
+      DB_USER="seu_usuario"
+      DB_PASS="sua_senha"
+      DB_NAME="netcarta_netcartas"
+
+      # Função para gerar os inserts
+      generate_inserts() {
+          START_ID=54561
+          START_BURACO=2739
+          START_TRANCA=2739
+          DATE="2024-10-03"
+          GA_IDS=(200 201) # Buraco, Tranca
+          TIME_FORMATS=("11:00:00" "13:00:00" "15:00:00" "17:00:00" "19:00:00" "21:00:00" "23:00:00")
+          INSERTS=""
+
+          for GA_ID in 200 201; do
+              for TIME in "11:00:00" "13:00:00" "15:00:00" "17:00:00" "19:00:00" "21:00:00" "23:00:00"; do
+                  TO_ID=$((START_ID++))
+                  if [ "$GA_ID" -eq 200 ]; then
+                      TO_NAME="LobbyTorneio-Buraco$START_BURACO"
+                      TO_APPNAME="LobbyTorneio-Buraco$START_BURACO"
+                      DESCRIPTION='Torneio de Buraco Individual'
+                      START_BURACO=$((START_BURACO+1))
+                  else
+                      TO_NAME="LobbyTorneio-Tranca$START_TRANCA"
+                      TO_APPNAME="LobbyTorneio-Tranca$START_TRANCA"
+                      DESCRIPTION='Torneio de Tranca Individual'
+                      START_TRANCA=$((START_TRANCA+1))
+                  fi
+
+                  INSERTS+="($TO_ID, $GA_ID, '$TO_NAME', 'TO_NAME não pode conter hipen no nome como antigamente, consultar Luiz', 'active', '', 'B', 0, 0, 2, 0, 1, 0, '$TO_APPNAME', 100, 8, 'Troféu Virtual', 'Inscrições Abertas', '', '${DATE} $TIME', 0, 0, '', '$DESCRIPTION', 0, 0, 0, 1, 1),\n"
+              done
+              DATE=$(date -d "$DATE + 1 day" '+%Y-%m-%d') # Avança para o próximo dia
+          done
+
+          # Remove a última vírgula e insere no banco de dados
+          INSERTS=${INSERTS::-2} # Remove a última vírgula e quebra de linha
+
+          SQL="INSERT INTO \`netcarta_netcartas\`.\`nc_tournaments\` \
+          (\`TO_ID\`, \`GA_ID\`, \`TO_NAME\`, \`COMMENTS\`, \`TO_STATUS\`, \`TO_PASSWORD\`, \
+          \`TO_TYPE\`, \`TO_AUDIO\`, \`TO_VIDEO\`, \`TO_MAX_PLAYERS\`, \`TO_NUMBER_OF_PLAYERS\`, \
+          \`TO_ALLOW_SPECTATORS\`, \`TO_ISPERSISTENT\`, \`TO_APPNAME\`, \`TO_MAXPLAYERS_IN_TOURNAMENT\`, \
+          \`TO_GIFT_ID\`, \`TO_GIFT_DESCRIPTION\`, \`TO_TOURNAMENT_STATUS\`, \`TO_TOURNAMENT_WINNER\`, \
+          \`TO_TOURNAMENT_START_DATE_TIME\`, \`TO_TOURNAMENT_REGISTERED\`, \`TO_MUSIC\`, \`TO_SERVER\`, \
+          \`TO_TITLE_DESC\`, \`TO_WINNER1_ID\`, \`TO_WINNER2_ID\`, \
+          \`MIN_ONLINE_PLAYERS_AUTO_START_BEFORE_TIME\`, \`NUMBER_OF_TOURNAMENTS_TO_CREATE\`, \
+          \`DIFF_IN_HOURS_CREATE_TOURNAMENTS\`) \
+          VALUES $INSERTS;"
+
+          # Executa o SQL
+          mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME -e "$SQL"
+      }
+
+      # Executa a função para gerar os inserts
+      generate_inserts
+    EOT
+  }
+}
